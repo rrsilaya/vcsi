@@ -26,6 +26,7 @@ import json
 import math
 import tempfile
 import textwrap
+import threading
 from collections import namedtuple
 from enum import Enum
 from glob import glob
@@ -529,6 +530,7 @@ class MediaCapture(object):
         self.frame_type = frame_type
         self.backend = backend
         self.fallback = fallback
+        self._fallback_lock = threading.Lock()
 
     def make_capture(self, time, width, height, out_path="out.png"):
         """Capture a frame at given time with given width and height using the configured backend
@@ -542,8 +544,11 @@ class MediaCapture(object):
         except RuntimeError:
             if not self.fallback or shutil.which("mplayer") is None:
                 raise
-            print("[WARN] ffmpeg failed to capture frame at {}, retrying with mplayer...".format(time),
-                  file=sys.stderr)
+            # switch to mplayer for the remaining captures, captures running in parallel may fail at the same time
+            with self._fallback_lock:
+                if self.backend != "mplayer":
+                    print("Sampling failed with ffmpeg, retrying with mplayer")
+                    self.backend = "mplayer"
             self._make_capture_mplayer(time, width, height, out_path)
 
     def _make_capture_ffmpeg(self, time, width, height, out_path):
