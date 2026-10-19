@@ -6,7 +6,6 @@
 from __future__ import print_function
 
 import datetime
-import glob
 import os
 import shutil
 import subprocess
@@ -628,7 +627,7 @@ class MediaCapture(object):
 
             self._run_capture_command(mplayer_command, "mplayer")
 
-            captures = sorted(glob.glob(os.path.join(out_dir, "*.png")))
+            captures = sorted(glob(os.path.join(escape(out_dir), "*.png")))
             if not captures:
                 raise RuntimeError("mplayer did not produce any frame at {} for file: {}".format(time, self.path))
 
