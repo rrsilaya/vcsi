@@ -112,7 +112,7 @@ Must be in your PATH:
 
 * ffmpeg
 * ffprobe
-* mplayer (optional, only needed with `--capture-backend mplayer`)
+* mplayer (optional, used with `--capture-backend mplayer` and as a fallback when an ffmpeg capture fails)
 
 
 ## Usage
@@ -150,7 +150,8 @@ usage: vcsi [-h] [-o OUTPUT_PATH] [-c CONFIG]
             [--timestamp-border-size TIMESTAMP_BORDER_SIZE]
             [--capture-alpha CAPTURE_ALPHA] [--version]
             [--list-template-attributes] [--frame-type FRAME_TYPE]
-            [-C {ffmpeg,mplayer}] [--interval INTERVAL] [--ignore-errors] [--no-overwrite]
+            [-C {ffmpeg,mplayer}] [--no-capture-fallback]
+            [--interval INTERVAL] [--ignore-errors] [--no-overwrite]
             [--exclude-extensions EXCLUDE_EXTENSIONS] [--fast]
             [-O THUMBNAIL_OUTPUT_PATH] [-S]
             [--timestamp-format TIMESTAMP_FORMAT]
@@ -293,6 +294,10 @@ optional arguments:
   -C {ffmpeg,mplayer}, --capture-backend {ffmpeg,mplayer}
                         Program used to capture frames. ffprobe is still
                         required to read the video metadata. (default: ffmpeg)
+  --no-capture-fallback
+                        Do not retry a failed ffmpeg capture with mplayer. By
+                        default, mplayer is used as a fallback when it is
+                        installed. (default: True)
   --interval INTERVAL   Capture frames at specified interval. Interval format
                         is any string supported by `parsedatetime`. For
                         example '5m', '3 minutes 5 seconds', '1 hour 15 min

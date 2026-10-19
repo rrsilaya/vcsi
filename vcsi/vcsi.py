@@ -522,20 +522,29 @@ class MediaCapture(object):
     """
 
     def __init__(self, path, accurate=False, skip_delay_seconds=Config.accurate_delay_seconds,
-                 frame_type=Config.frame_type, backend=Config.capture_backend):
+                 frame_type=Config.frame_type, backend=Config.capture_backend, fallback=True):
         self.path = path
         self.accurate = accurate
         self.skip_delay_seconds = skip_delay_seconds
         self.frame_type = frame_type
         self.backend = backend
+        self.fallback = fallback
 
     def make_capture(self, time, width, height, out_path="out.png"):
         """Capture a frame at given time with given width and height using the configured backend
         """
         if self.backend == "mplayer":
             self._make_capture_mplayer(time, width, height, out_path)
-        else:
+            return
+
+        try:
             self._make_capture_ffmpeg(time, width, height, out_path)
+        except RuntimeError:
+            if not self.fallback or shutil.which("mplayer") is None:
+                raise
+            print("[WARN] ffmpeg failed to capture frame at {}, retrying with mplayer...".format(time),
+                  file=sys.stderr)
+            self._make_capture_mplayer(time, width, height, out_path)
 
     def _make_capture_ffmpeg(self, time, width, height, out_path):
         """Capture a frame at given time with given width and height using ffmpeg
@@ -608,6 +617,10 @@ class MediaCapture(object):
                 ]
 
         self._run_capture_command(ffmpeg_command, "ffmpeg")
+
+        # ffmpeg exits successfully without writing anything when it can't decode a frame
+        if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+            raise RuntimeError("ffmpeg did not produce any frame at {} for file: {}".format(time, self.path))
 
     def _make_capture_mplayer(self, time, width, height, out_path):
         """Capture a frame at given time with given width and height using mplayer
@@ -1652,6 +1665,11 @@ def main():
         help="Program used to capture frames. ffprobe is still required to read the video metadata.",
         dest="capture_backend")
     parser.add_argument(
+        "--no-capture-fallback",
+        action="store_false",
+        help="Do not retry a failed ffmpeg capture with mplayer. By default, mplayer is used as a fallback when it is installed.",
+        dest="capture_fallback")
+    parser.add_argument(
         "--interval",
         type=interval_type,
         default=Config.interval,
@@ -1810,7 +1828,8 @@ def process_file(path, args):
         accurate=args.is_accurate,
         skip_delay_seconds=args.accurate_delay_seconds,
         frame_type=args.frame_type,
-        backend=args.capture_backend
+        backend=args.capture_backend,
+        fallback=args.capture_fallback
     )
 
     # metadata margins
