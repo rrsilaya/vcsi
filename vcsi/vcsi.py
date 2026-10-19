@@ -6,6 +6,7 @@
 from __future__ import print_function
 
 import datetime
+import glob
 import os
 import shutil
 import subprocess
@@ -117,6 +118,8 @@ DEFAULT_IMAGE_FORMAT = "jpg"
 DEFAULT_TIMESTAMP_POSITION = TimestampPosition.se
 DEFAULT_FRAME_TYPE = None
 DEFAULT_INTERVAL = None
+DEFAULT_CAPTURE_BACKEND = "ffmpeg"
+CAPTURE_BACKENDS = ["ffmpeg", "mplayer"]
 
 
 class Config:
@@ -154,6 +157,7 @@ class Config:
     timestamp_position = DEFAULT_TIMESTAMP_POSITION
     frame_type = DEFAULT_FRAME_TYPE
     interval = DEFAULT_INTERVAL
+    capture_backend = DEFAULT_CAPTURE_BACKEND
 
     @classmethod
     def load_configuration(cls, filename=DEFAULT_CONFIG_FILE):
@@ -514,13 +518,22 @@ class MediaCapture(object):
     """
 
     def __init__(self, path, accurate=False, skip_delay_seconds=Config.accurate_delay_seconds,
-                 frame_type=Config.frame_type):
+                 frame_type=Config.frame_type, backend=Config.capture_backend):
         self.path = path
         self.accurate = accurate
         self.skip_delay_seconds = skip_delay_seconds
         self.frame_type = frame_type
+        self.backend = backend
 
     def make_capture(self, time, width, height, out_path="out.png"):
+        """Capture a frame at given time with given width and height using the configured backend
+        """
+        if self.backend == "mplayer":
+            self._make_capture_mplayer(time, width, height, out_path)
+        else:
+            self._make_capture_ffmpeg(time, width, height, out_path)
+
+    def _make_capture_ffmpeg(self, time, width, height, out_path):
         """Capture a frame at given time with given width and height using ffmpeg
         """
         skip_delay = MediaInfo.pretty_duration(self.skip_delay_seconds, show_millis=True)
@@ -590,20 +603,57 @@ class MediaCapture(object):
                     out_path
                 ]
 
+        self._run_capture_command(ffmpeg_command, "ffmpeg")
+
+    def _make_capture_mplayer(self, time, width, height, out_path):
+        """Capture a frame at given time with given width and height using mplayer
+        """
+        # mplayer can't write to a given filename, only to numbered files in a directory
+        out_dir = tempfile.mkdtemp()
         try:
-            subprocess.run(ffmpeg_command, stdin=DEVNULL, capture_output=True, check=True)
+            mplayer_command = [
+                "mplayer",
+                "-really-quiet",
+                "-nosound",
+                "-nolirc",
+                "-noconsolecontrols",
+                "-nocache",
+                "-ss", time,
+                # the first frame after a seek is sometimes dropped or black, keep the last one
+                "-frames", "2",
+                "-vf", "scale=%s:%s" % (width, height),
+                "-vo", "png:z=1:outdir=%s" % (out_dir,),
+                self.path,
+            ]
+
+            self._run_capture_command(mplayer_command, "mplayer")
+
+            captures = sorted(glob.glob(os.path.join(out_dir, "*.png")))
+            if not captures:
+                raise RuntimeError("mplayer did not produce any frame at {} for file: {}".format(time, self.path))
+
+            # convert to the format implied by out_path's extension
+            with Image.open(captures[-1]) as image:
+                image.convert("RGB").save(out_path)
+        finally:
+            shutil.rmtree(out_dir, ignore_errors=True)
+
+    def _run_capture_command(self, command, tool_name):
+        """Run a capture command, exiting if the tool is missing and raising if it fails
+        """
+        try:
+            subprocess.run(command, stdin=DEVNULL, capture_output=True, check=True)
         except FileNotFoundError:
-            error = "Could not find 'ffmpeg' executable. Please make sure ffmpeg/ffprobe is installed and is in your PATH."
+            error = f"Could not find '{tool_name}' executable. Please make sure {tool_name} is installed and is in your PATH."
             error_exit(error)
         except subprocess.CalledProcessError as ex:
             error = f"""
-                ffmpeg had an error while decoding the file:",
+                {tool_name} had an error while decoding the file:",
                 Command: '{" ".join(ex.cmd)}',
                 Exit code: {ex.returncode},
                 Output: {ex.stderr.decode("utf-8")}
                 """
             raise RuntimeError(error)
-            
 
     def compute_avg_color(self, image_path):
         """Computes the average color of an image
@@ -1591,6 +1641,13 @@ def main():
         help="Frame type passed to ffmpeg 'select=eq(pict_type,FRAME_TYPE)' filter. Should be one of ('I', 'B', 'P') or the special type 'key' which will use the 'select=key' filter instead.",
         dest="frame_type")
     parser.add_argument(
+        "-C", "--capture-backend",
+        type=str,
+        choices=CAPTURE_BACKENDS,
+        default=Config.capture_backend,
+        help="Program used to capture frames. ffprobe is still required to read the video metadata.",
+        dest="capture_backend")
+    parser.add_argument(
         "--interval",
         type=interval_type,
         default=Config.interval,
@@ -1729,6 +1786,12 @@ def process_file(path, args):
     if args.vcs_width != DEFAULT_CONTACT_SHEET_WIDTH and args.actual_size:
         error_exit("Cannot use --width and --actual-size at the same time.")
 
+    if args.capture_backend == "mplayer":
+        if args.frame_type is not None:
+            error_exit("--frame-type is only supported with the ffmpeg capture backend.")
+        if args.is_accurate:
+            error_exit("--accurate is only supported with the ffmpeg capture backend.")
+
     if args.delay_percent is not None:
         args.start_delay_percent = args.delay_percent
         args.end_delay_percent = args.delay_percent
@@ -1742,7 +1805,8 @@ def process_file(path, args):
         path,
         accurate=args.is_accurate,
         skip_delay_seconds=args.accurate_delay_seconds,
-        frame_type=args.frame_type
+        frame_type=args.frame_type,
+        backend=args.capture_backend
     )
 
     # metadata margins

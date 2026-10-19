@@ -112,6 +112,7 @@ Must be in your PATH:
 
 * ffmpeg
 * ffprobe
+* mplayer (optional, only needed with `--capture-backend mplayer`)
 
 
 ## Usage
@@ -149,7 +150,7 @@ usage: vcsi [-h] [-o OUTPUT_PATH] [-c CONFIG]
             [--timestamp-border-size TIMESTAMP_BORDER_SIZE]
             [--capture-alpha CAPTURE_ALPHA] [--version]
             [--list-template-attributes] [--frame-type FRAME_TYPE]
-            [--interval INTERVAL] [--ignore-errors] [--no-overwrite]
+            [-C {ffmpeg,mplayer}] [--interval INTERVAL] [--ignore-errors] [--no-overwrite]
             [--exclude-extensions EXCLUDE_EXTENSIONS] [--fast]
             [-O THUMBNAIL_OUTPUT_PATH] [-S]
             [--timestamp-format TIMESTAMP_FORMAT]
@@ -289,6 +290,9 @@ optional arguments:
                         one of ('I', 'B', 'P') or the special type 'key' which
                         will use the 'select=key' filter instead. (default:
                         None)
+  -C {ffmpeg,mplayer}, --capture-backend {ffmpeg,mplayer}
+                        Program used to capture frames. ffprobe is still
+                        required to read the video metadata. (default: ffmpeg)
   --interval INTERVAL   Capture frames at specified interval. Interval format
                         is any string supported by `parsedatetime`. For
                         example '5m', '3 minutes 5 seconds', '1 hour 15 min
