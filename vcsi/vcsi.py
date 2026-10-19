@@ -323,7 +323,12 @@ class MediaInfo(object):
         self.filename = os.path.basename(format_dict["filename"])
         self.file_path = os.path.abspath(format_dict["filename"])
 
-        self.size_bytes = int(format_dict["size"])
+        # some ffprobe builds truncate the size of files over 4 GiB to 32 bits,
+        # so trust the file system for local files and ffprobe only for URLs
+        if os.path.isfile(self.file_path):
+            self.size_bytes = os.path.getsize(self.file_path)
+        else:
+            self.size_bytes = int(format_dict["size"])
         self.size = self.human_readable_size(self.size_bytes)
 
     @staticmethod
